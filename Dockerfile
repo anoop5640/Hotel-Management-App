@@ -1,26 +1,30 @@
-# Use a specific version of Tomcat as base image
-#FROM tomcat:8.0.20-jre8
-
-# Expose port 8080 to access the application
-#EXPOSE 8080
-
-# Copy the WAR file from the target directory of your Maven project to the Tomcat webapps directory
-#COPY target/maven-cloudaseem-app.war /usr/local/tomcat/webapps/
-
-
-
-
-FROM maven:3.9.9-eclipse-temurin-11
+# Use Maven with Java 17 (to match your Spring Boot version)
+FROM maven:3.9.9-eclipse-temurin-17 AS build
 
 WORKDIR /app
 
-# Copy just the POM first (for better layer caching)
+# Copy just the POM first (to leverage Docker layer caching)
 COPY pom.xml .
-# Download dependencies (creates cached layer)
+
+# Download dependencies before copying the full source (better caching)
 RUN mvn dependency:go-offline
 
-# Copy source
+# Copy the source code
 COPY src ./src
 
-# Run with DevTools support
-CMD ["mvn", "spring-boot:run"]
+# Build the application (skip tests for faster build)
+RUN mvn clean package -DskipTests
+
+# Use a lightweight JDK image for running the app
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+
+# Copy built JAR from the previous stage
+COPY --from=build /app/target/*.jar app.jar
+
+# Expose the correct port (check application.properties)
+EXPOSE 9090
+
+# Run the application
+CMD ["java", "-jar", "app.jar"]
